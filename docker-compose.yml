@@ -1,0 +1,10 @@
+services:
+  scraper:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Override specific vars here if needed:
+    # environment:
+    #   - SEARCH_AREAS=Manchester,Birmingham
+    #   - CHECK_INTERVAL=600

@@ -2,50 +2,80 @@
 
 ## Project Overview
 
-**amzpydis** is a newly initialized repository currently in the pre-development phase. No source code, build tooling, or test infrastructure has been set up yet.
+**amzpydis** is a Python web scraper that monitors [Amazon UK warehouse jobs](https://www.jobsatamazon.co.uk/app#/jobSearch) for openings in specific areas and sends notifications to a Discord channel via webhook.
 
 ## Repository Structure
 
 ```
 amzpydis/
-├── CLAUDE.md          # This file - AI assistant guide
-└── README.md          # Project readme (placeholder)
+├── src/
+│   ├── __init__.py           # Package marker
+│   ├── config.py             # Configuration from environment variables
+│   ├── scraper.py            # Playwright-based scraper + Job dataclass
+│   ├── discord_notifier.py   # Discord webhook integration
+│   └── main.py               # Entrypoint with scheduling loop
+├── .env.example              # Template for environment variables
+├── .gitignore
+├── .dockerignore
+├── Dockerfile                # Container image for VPS deployment
+├── docker-compose.yml        # Single-command deployment
+├── requirements.txt          # Python dependencies
+├── CLAUDE.md                 # This file
+└── README.md                 # User-facing documentation
 ```
 
 ## Current State
 
-- **Language:** Not yet determined
-- **Build system:** Not configured
-- **Package manager:** Not configured
-- **Test framework:** Not configured
-- **Linting/formatting:** Not configured
-- **CI/CD:** Not configured
+- **Language:** Python 3.11+
+- **Key library:** Playwright (Chromium, sync API)
+- **Package manager:** pip / requirements.txt
+- **Test framework:** Not yet configured
+- **Linting/formatting:** Not yet configured
+- **CI/CD:** Not configured — designed for Docker deployment on a VPS
 
 ## Development Workflow
 
-No build, test, or lint commands are available yet. This section should be updated as tooling is added.
-
-<!-- Example structure to fill in as the project develops:
-### Build
+### Install dependencies
 ```sh
-# <build command here>
+pip install -r requirements.txt
+playwright install chromium
 ```
 
-### Test
+### Run locally
 ```sh
-# <test command here>
+cp .env.example .env   # then edit .env with your values
+python -m src.main
 ```
 
-### Lint / Format
+### Run with Docker
 ```sh
-# <lint command here>
+cp .env.example .env   # then edit .env
+docker compose up -d --build
 ```
 
-### Run
+### View logs (Docker)
 ```sh
-# <run command here>
+docker compose logs -f scraper
 ```
--->
+
+## Key Modules
+
+| Module | Purpose |
+|---|---|
+| `src/config.py` | Reads `.env` via `python-dotenv`. All tunables live here. |
+| `src/scraper.py` | Launches headless Chromium, navigates to the SPA, extracts job cards. Supports proxy. Contains `Job` dataclass and `scrape_jobs()`. |
+| `src/discord_notifier.py` | Formats job listings as Discord embeds and POSTs them to a webhook URL. |
+| `src/main.py` | Entrypoint. Runs `scrape_jobs` → `send_job_alert` in a loop on `CHECK_INTERVAL`. Tracks seen jobs to avoid duplicate alerts. Handles SIGINT/SIGTERM. |
+
+## Configuration (environment variables)
+
+| Variable | Default | Description |
+|---|---|---|
+| `DISCORD_WEBHOOK_URL` | *(empty)* | Discord webhook for notifications |
+| `PROXY_URL` | *(empty)* | Optional HTTP proxy (`http://user:pass@host:port`) |
+| `SEARCH_AREAS` | `London` | Comma-separated areas to monitor |
+| `CHECK_INTERVAL` | `300` | Seconds between scrape cycles |
+| `HEADLESS` | `true` | Run browser without GUI (set `false` for debugging) |
 
 ## Conventions for AI Assistants
 
@@ -57,6 +87,14 @@ No build, test, or lint commands are available yet. This section should be updat
 - Prefer editing existing files over creating new ones.
 - Do not introduce security vulnerabilities (injection, XSS, etc.).
 
+### Code Style
+
+- Python 3.11+ with type hints (use `list[X]` / `str | None`, not `List` / `Optional`).
+- Dataclasses for structured data.
+- Logging via `logging` module (not `print`).
+- Constants in `UPPER_SNAKE_CASE`, functions/variables in `lower_snake_case`.
+- Private helpers prefixed with `_`.
+
 ### Git Practices
 
 - Write clear, concise commit messages that describe the "why" not just the "what."
@@ -65,10 +103,6 @@ No build, test, or lint commands are available yet. This section should be updat
 - Stage specific files rather than using `git add -A`.
 - Never commit secrets, credentials, or `.env` files.
 
-### Code Style
-
-No project-specific style guidelines have been established yet. When code is added, follow the conventions already present in the codebase (indentation, naming, imports, etc.). Update this section as patterns emerge.
-
 ### Documentation
 
 - Update this CLAUDE.md file as the project evolves (new tooling, commands, conventions).
@@ -76,8 +110,28 @@ No project-specific style guidelines have been established yet. When code is add
 
 ## Dependencies
 
-No dependencies have been declared yet. Update this section when a package manager and dependency file are introduced.
+Declared in `requirements.txt`:
+- `playwright` — headless browser automation
+- `requests` — HTTP client for Discord webhooks
+- `python-dotenv` — `.env` file loading
 
 ## Architecture
 
-No architecture decisions have been made yet. Document key design decisions, module boundaries, and data flow here as the project takes shape.
+```
+                ┌─────────┐
+                │ config   │  reads .env
+                └────┬────┘
+                     │
+   ┌─────────────────┼───────────────┐
+   │                 │               │
+   v                 v               v
+┌──────┐      ┌──────────┐   ┌──────────────┐
+│ main │─────>│ scraper  │   │ discord_     │
+│ loop │      │ (PW)     │   │ notifier     │
+└──┬───┘      └──────────┘   └──────────────┘
+   │                                 ^
+   │  new jobs found                 │
+   └─────────────────────────────────┘
+```
+
+`main` runs a timed loop: scrape → diff against seen set → notify Discord → sleep.
